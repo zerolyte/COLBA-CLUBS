@@ -1,0 +1,26 @@
+COLBA CLUBS — публикация на Render + Neon PostgreSQL
+
+Что подготовлено
+- Flask-приложение с ролями оператора и ученика.
+- PostgreSQL через переменную DATABASE_URL (подходит Neon).
+- SQLite сохранена для локального запуска.
+- Render Blueprint: render.yaml.
+- Gunicorn для запуска веб-сервиса.
+- Безопасные cookie для HTTPS и обязательный секрет в Render.
+
+Публикация
+1. Создайте PostgreSQL-проект в Neon и скопируйте pooled connection string с SSL.
+2. Загрузите содержимое папки clubpoint_system в GitHub.
+3. В Render создайте Web Service из GitHub-репозитория.
+4. Build Command: pip install -r requirements.txt
+5. Start Command: gunicorn app:app
+6. В Environment добавьте DATABASE_URL (строка Neon), OPERATOR_USERNAME, OPERATOR_PASSWORD и COOKIE_SECURE=1. CLUBPOINT_SECRET можно сгенерировать в Render.
+7. После запуска откройте /operator/login.
+8. Добавьте Custom Domain colbaclubs.uz в Render и внесите DNS-записи, которые Render покажет для сервиса.
+
+Важно
+- Не публикуйте DATABASE_URL, CLUBPOINT_SECRET или пароль оператора.
+- Используйте уникальный пароль длиной не менее 12 символов.
+- Бесплатные тарифы и их ограничения могут меняться.
+- Если в прежней SQLite-базе есть реальные данные, их нужно отдельно перенести в PostgreSQL.
+- Перед использованием с реальными данными учеников настройте резервное копирование и согласуйте хранение данных с администрацией.

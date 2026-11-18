@@ -1,0 +1,4 @@
+{$DOMAIN} {
+    encode gzip
+    reverse_proxy colba-clubs:8000
+}

@@ -1,0 +1,34 @@
+services:
+  colba-clubs:
+    build: .
+    restart: unless-stopped
+    environment:
+      CLUBPOINT_DB: /data/colba-clubs.db
+      CLUBPOINT_SECRET: ${CLUBPOINT_SECRET:?Set a long random secret in .env}
+      COOKIE_SECURE: "1"
+      OPERATOR_USERNAME: ${OPERATOR_USERNAME:-admin}
+      OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:?Set an initial operator password in .env}
+    volumes:
+      - colba_data:/data
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set your domain in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - colba-clubs
+
+volumes:
+  colba_data:
+  caddy_data:
+  caddy_config:

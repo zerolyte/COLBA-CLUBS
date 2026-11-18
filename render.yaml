@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: colba-clubs
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DATABASE_URL
+        sync: false
+      - key: CLUBPOINT_SECRET
+        generateValue: true
+      - key: OPERATOR_USERNAME
+        sync: false
+      - key: OPERATOR_PASSWORD
+        sync: false
+      - key: COOKIE_SECURE
+        value: "1"
