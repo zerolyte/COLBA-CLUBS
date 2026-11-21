@@ -70,6 +70,21 @@ def init_db():
           members INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 0
         )""")
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0")
+        con.execute("""CREATE TABLE IF NOT EXISTS news (
+          id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS tournaments (
+          id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+          event_date TEXT NOT NULL, capacity INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'open', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS tournament_registrations (
+          id SERIAL PRIMARY KEY, tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(tournament_id, user_id)
+        )""")
     else:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
@@ -83,6 +98,24 @@ def init_db():
         CREATE TABLE IF NOT EXISTS clubs (
           id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL,
           members INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 0
+        );
+        """)
+        con.executescript("""
+        CREATE TABLE IF NOT EXISTS news (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS tournaments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+          event_date TEXT NOT NULL, capacity INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'open', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS tournament_registrations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(tournament_id, user_id)
         );
         """)
         user_columns = [row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()]
@@ -153,9 +186,17 @@ def operator_dashboard():
                          LEFT JOIN clubs c ON c.id=u.club_id ORDER BY u.full_name""").fetchall()
     totals=con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
     points=con.execute("SELECT COALESCE(SUM(points),0) n FROM clubs").fetchone()["n"]
+    news_items=con.execute("SELECT * FROM news ORDER BY created_at DESC, id DESC").fetchall()
+    tournaments=con.execute("""SELECT t.*, COUNT(r.id) AS registered FROM tournaments t
+        LEFT JOIN tournament_registrations r ON r.tournament_id=t.id
+        GROUP BY t.id ORDER BY t.event_date, t.id DESC""").fetchall()
+    registrations=con.execute("""SELECT t.title AS tournament_title, u.full_name, u.student_id
+        FROM tournament_registrations r JOIN tournaments t ON t.id=r.tournament_id
+        JOIN users u ON u.id=r.user_id ORDER BY t.event_date, t.title, u.full_name""").fetchall()
     con.close()
     return render_template("operator.html", clubs=clubs, users=users, total_users=totals,
-                           total_points=points)
+                           total_points=points, news_items=news_items, tournaments=tournaments,
+                           registrations=registrations)
 
 @app.post("/operator/club")
 @operator_required
@@ -245,6 +286,113 @@ def user_dashboard():
 def logout():
     session.clear()
     return redirect(url_for("home"))
+
+
+@app.route("/news")
+def news_catalog():
+    con=db()
+    news_items=con.execute("SELECT * FROM news ORDER BY created_at DESC, id DESC").fetchall()
+    con.close()
+    return render_template("news.html", news_items=news_items)
+
+@app.route("/tournaments")
+def tournaments_catalog():
+    con=db()
+    tournaments=con.execute("""SELECT t.*, COUNT(r.id) AS registered,
+        SUM(CASE WHEN r.user_id=? THEN 1 ELSE 0 END) AS joined
+        FROM tournaments t LEFT JOIN tournament_registrations r ON r.tournament_id=t.id
+        GROUP BY t.id ORDER BY t.event_date, t.id DESC""",
+        (session.get("user_id", -1),)).fetchall()
+    con.close()
+    return render_template("tournaments.html", tournaments=tournaments)
+
+@app.post("/tournament/<int:tournament_id>/register")
+@user_required
+def register_tournament(tournament_id):
+    con=db()
+    tournament=con.execute("SELECT * FROM tournaments WHERE id=?", (tournament_id,)).fetchone()
+    if not tournament:
+        con.close(); flash("Турнир не найден.")
+        return redirect(url_for("tournaments_catalog"))
+    if tournament["status"] != "open":
+        con.close(); flash("Регистрация на этот турнир закрыта.")
+        return redirect(url_for("tournaments_catalog"))
+    existing=con.execute("SELECT id FROM tournament_registrations WHERE tournament_id=? AND user_id=?",
+                         (tournament_id, session["user_id"])).fetchone()
+    if existing:
+        con.close(); flash("Вы уже зарегистрированы на этот турнир.")
+        return redirect(url_for("tournaments_catalog"))
+    count=con.execute("SELECT COUNT(*) AS n FROM tournament_registrations WHERE tournament_id=?",
+                      (tournament_id,)).fetchone()["n"]
+    if tournament["capacity"] > 0 and count >= tournament["capacity"]:
+        con.close(); flash("Свободных мест больше нет.")
+        return redirect(url_for("tournaments_catalog"))
+    try:
+        con.execute("INSERT INTO tournament_registrations(tournament_id,user_id) VALUES(?,?)",
+                    (tournament_id, session["user_id"]))
+        con.commit(); flash("Вы успешно зарегистрированы на турнир.")
+    except Exception:
+        con.close(); flash("Не удалось зарегистрироваться. Возможно, вы уже записаны.")
+        return redirect(url_for("tournaments_catalog"))
+    con.close()
+    return redirect(url_for("tournaments_catalog"))
+
+@app.post("/operator/news")
+@operator_required
+def create_news():
+    title=request.form.get("title","").strip()
+    body=request.form.get("body","").strip()
+    if not title or not body:
+        flash("Заполните заголовок и текст новости.")
+    else:
+        con=db()
+        con.execute("INSERT INTO news(title,body) VALUES(?,?)",(title,body))
+        con.commit(); con.close(); flash("Новость опубликована.")
+    return redirect(url_for("operator_dashboard"))
+
+@app.post("/operator/news/delete/<int:news_id>")
+@operator_required
+def delete_news(news_id):
+    con=db(); con.execute("DELETE FROM news WHERE id=?",(news_id,))
+    con.commit(); con.close(); flash("Новость удалена.")
+    return redirect(url_for("operator_dashboard"))
+
+@app.post("/operator/tournament")
+@operator_required
+def create_tournament():
+    title=request.form.get("title","").strip()
+    description=request.form.get("description","").strip()
+    event_date=request.form.get("event_date","").strip()
+    status=request.form.get("status","open")
+    try:
+        capacity=max(0,int(request.form.get("capacity","0")))
+        if not title or not event_date or status not in ("open","closed","finished"):
+            raise ValueError()
+        con=db()
+        con.execute("""INSERT INTO tournaments(title,description,event_date,capacity,status)
+                       VALUES(?,?,?,?,?)""",(title,description,event_date,capacity,status))
+        con.commit(); con.close(); flash("Турнир создан.")
+    except ValueError:
+        flash("Проверьте название, дату, количество мест и статус турнира.")
+    return redirect(url_for("operator_dashboard"))
+
+@app.post("/operator/tournament/status/<int:tournament_id>")
+@operator_required
+def update_tournament_status(tournament_id):
+    status=request.form.get("status","")
+    if status in ("open","closed","finished"):
+        con=db(); con.execute("UPDATE tournaments SET status=? WHERE id=?",(status,tournament_id))
+        con.commit(); con.close(); flash("Статус турнира обновлён.")
+    return redirect(url_for("operator_dashboard"))
+
+@app.post("/operator/tournament/delete/<int:tournament_id>")
+@operator_required
+def delete_tournament(tournament_id):
+    con=db(); con.execute("DELETE FROM tournament_registrations WHERE tournament_id=?",(tournament_id,))
+    con.execute("DELETE FROM tournaments WHERE id=?",(tournament_id,))
+    con.commit(); con.close(); flash("Турнир удалён.")
+    return redirect(url_for("operator_dashboard"))
+
 
 init_db()
 if __name__ == "__main__":
