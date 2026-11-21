@@ -88,10 +88,13 @@ def init_db():
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0")
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA")
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_mime TEXT")
+        con.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS image_data BYTEA") if False else None
         con.execute("""CREATE TABLE IF NOT EXISTS news (
           id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+        con.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS image_data BYTEA")
+        con.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS image_mime TEXT")
         con.execute("""CREATE TABLE IF NOT EXISTS tournaments (
           id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
           event_date TEXT NOT NULL, capacity INTEGER NOT NULL DEFAULT 0,
@@ -143,6 +146,11 @@ def init_db():
           UNIQUE(tournament_id, user_id)
         );
         """)
+        news_columns = [row["name"] for row in con.execute("PRAGMA table_info(news)").fetchall()]
+        if "image_data" not in news_columns:
+            con.execute("ALTER TABLE news ADD COLUMN image_data BLOB")
+        if "image_mime" not in news_columns:
+            con.execute("ALTER TABLE news ADD COLUMN image_mime TEXT")
         user_columns = [row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()]
         if "points" not in user_columns:
             con.execute("ALTER TABLE users ADD COLUMN points INTEGER NOT NULL DEFAULT 0")
@@ -373,6 +381,27 @@ def user_avatar(user_id):
     return Response(bytes(row["avatar_data"]), mimetype=row["avatar_mime"] or "image/jpeg",
                     headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
 
+@app.route("/operator/avatar/<int:user_id>")
+@operator_required
+def operator_user_avatar(user_id):
+    con=db()
+    row=con.execute("SELECT avatar_data, avatar_mime FROM users WHERE id=?", (user_id,)).fetchone()
+    con.close()
+    if not row or not row["avatar_data"]:
+        return "", 404
+    return Response(bytes(row["avatar_data"]), mimetype=row["avatar_mime"] or "image/jpeg",
+                    headers={"Cache-Control":"private, max-age=300","X-Content-Type-Options":"nosniff"})
+
+@app.route("/news/image/<int:news_id>")
+def news_image(news_id):
+    con=db()
+    row=con.execute("SELECT image_data,image_mime FROM news WHERE id=?", (news_id,)).fetchone()
+    con.close()
+    if not row or not row["image_data"]:
+        return "", 404
+    return Response(bytes(row["image_data"]), mimetype=row["image_mime"] or "image/jpeg",
+                    headers={"Cache-Control":"public, max-age=3600","X-Content-Type-Options":"nosniff"})
+
 @app.route("/user")
 @user_required
 def user_dashboard():
@@ -550,11 +579,24 @@ def register_tournament(tournament_id):
 def create_news():
     title=request.form.get("title","").strip()
     body=request.form.get("body","").strip()
+    photo=request.files.get("photo")
+    image_data=None
+    image_mime=None
+    if photo and photo.filename:
+        image_data=photo.read(1_500_001)
+        image_mime=photo.mimetype
+        valid=((image_mime=="image/jpeg" and image_data.startswith(b"\xff\xd8\xff")) or
+               (image_mime=="image/png" and image_data.startswith(b"\x89PNG\r\n\x1a\n")) or
+               (image_mime=="image/webp" and len(image_data)>12 and image_data[:4]==b"RIFF" and image_data[8:12]==b"WEBP"))
+        if len(image_data)>1_500_000 or not valid:
+            flash("Фото должно быть JPG, PNG или WEBP размером не более 1,5 МБ.")
+            return redirect(url_for("operator_dashboard"))
     if not title or not body:
         flash(tr("Заполните заголовок и текст новости."))
     else:
         con=db()
-        con.execute("INSERT INTO news(title,body) VALUES(?,?)",(title,body))
+        con.execute("INSERT INTO news(title,body,image_data,image_mime) VALUES(?,?,?,?)",
+                    (title,body,image_data,image_mime))
         con.commit(); con.close(); flash(tr("Новость опубликована."))
     return redirect(url_for("operator_dashboard"))
 
