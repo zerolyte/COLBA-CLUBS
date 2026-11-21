@@ -211,7 +211,7 @@ def operator_dashboard():
     clubs=con.execute("""SELECT c.*, COUNT(u.id) AS real_members,
                          COALESCE(SUM(u.points),0) AS points
                          FROM clubs c LEFT JOIN users u ON u.club_id=c.id
-                         GROUP BY c.id ORDER BY points DESC""").fetchall()
+                         GROUP BY c.id ORDER BY COALESCE(SUM(u.points),0) DESC""").fetchall()
     users=con.execute("""SELECT u.*, c.name AS club_name FROM users u
                          LEFT JOIN clubs c ON c.id=u.club_id ORDER BY u.full_name""").fetchall()
     totals=con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
@@ -314,7 +314,7 @@ def user_dashboard():
                         c.members AS club_members FROM users u LEFT JOIN clubs c ON c.id=u.club_id
                         WHERE u.id=?""",(session["user_id"],)).fetchone()
     clubs=con.execute("""SELECT c.*, COALESCE(SUM(u.points),0) AS points FROM clubs c
-                        LEFT JOIN users u ON u.club_id=c.id GROUP BY c.id ORDER BY points DESC""").fetchall()
+                        LEFT JOIN users u ON u.club_id=c.id GROUP BY c.id ORDER BY COALESCE(SUM(u.points),0) DESC""").fetchall()
     con.close()
     return render_template("user.html", user=user, clubs=clubs)
 
