@@ -134,7 +134,7 @@ def init_db():
 def operator_required(fn):
     @wraps(fn)
     def wrapped(*args, **kwargs):
-        if session.get("role") != "operator":
+        if not session.get("operator_id"):
             return redirect(url_for("operator_login"))
         return fn(*args, **kwargs)
     return wrapped
@@ -142,7 +142,7 @@ def operator_required(fn):
 def user_required(fn):
     @wraps(fn)
     def wrapped(*args, **kwargs):
-        if session.get("role") != "user":
+        if not session.get("user_id"):
             return redirect(url_for("user_login"))
         return fn(*args, **kwargs)
     return wrapped
@@ -158,7 +158,7 @@ def operator_login():
         row = con.execute("SELECT * FROM operators WHERE username=?", (request.form["login"].strip(),)).fetchone()
         con.close()
         if row and check_password_hash(row["password_hash"], request.form["password"]):
-            session.clear(); session.permanent=True; session["role"]="operator"; session["operator_id"]=row["id"]
+            session.permanent=True; session["operator_id"]=row["id"]
             return redirect(url_for("operator_dashboard"))
         flash("Неверный логин или пароль.")
     return render_template("login.html", title="Вход оператора", action=url_for("operator_login"))
@@ -170,7 +170,7 @@ def user_login():
         row = con.execute("SELECT * FROM users WHERE login=?", (request.form["login"].strip(),)).fetchone()
         con.close()
         if row and check_password_hash(row["password_hash"], request.form["password"]):
-            session.clear(); session.permanent=True; session["role"]="user"; session["user_id"]=row["id"]
+            session.permanent=True; session["user_id"]=row["id"]
             return redirect(url_for("user_dashboard"))
         flash("Неверный логин или пароль.")
     return render_template("login.html", title="Вход пользователя", action=url_for("user_login"))
@@ -281,6 +281,16 @@ def user_dashboard():
     clubs=con.execute("SELECT * FROM clubs ORDER BY points DESC").fetchall()
     con.close()
     return render_template("user.html", user=user, clubs=clubs)
+
+@app.route("/operator/logout")
+def operator_logout():
+    session.pop("operator_id", None)
+    return redirect(url_for("home"))
+
+@app.route("/user/logout")
+def user_logout():
+    session.pop("user_id", None)
+    return redirect(url_for("home"))
 
 @app.route("/logout")
 def logout():
