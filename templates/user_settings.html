@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block body %}
+<main class="wrap settings-wrap">
+  <div class="settings-title"><div><p class="eyebrow">COLBA CLUBS</p><h1>{{ 'Foydalanuvchi sozlamalari' if current_language == 'uz' else 'Настройки пользователя' }}</h1><p class="sub">{{ user.full_name }} · ID: {{ user.student_id }}</p></div></div>
+  <section class="settings-card">
+    <div class="settings-card-head"><div><h2>{{ 'Profil rasmi' if current_language == 'uz' else 'Фото профиля' }}</h2><p class="muted">{{ 'Profilingiz uchun rasm yuklang.' if current_language == 'uz' else 'Загрузите фотографию для своего профиля.' }}</p></div></div>
+    <div class="avatar-editor">{% if user.avatar_data %}<img class="profile-avatar" src="{{ url_for('user_avatar', user_id=user.id) }}" alt="Фото профиля">{% else %}<div class="profile-avatar profile-placeholder">{{ user.full_name[:1]|upper }}</div>{% endif %}
+      <form method="post" enctype="multipart/form-data" class="settings-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="photo"><label>{{ 'Yangi rasm tanlang' if current_language == 'uz' else 'Выберите новое фото' }}</label><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required><p class="hint">JPG, PNG или WEBP · максимум 2 МБ</p><button type="submit">{{ 'Rasmni saqlash' if current_language == 'uz' else 'Сохранить фото' }}</button></form>
+    </div>
+  </section>
+  <section class="settings-card">
+    <h2>{{ 'Kirish parolini o‘zgartirish' if current_language == 'uz' else 'Изменить пароль входа' }}</h2>
+    <p class="muted">{{ 'Xavfsizlik uchun joriy parolni kiriting.' if current_language == 'uz' else 'Для безопасности сначала введите текущий пароль.' }}</p>
+    <form method="post" class="settings-form password-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="password">
+      <label>{{ 'Joriy parol' if current_language == 'uz' else 'Текущий пароль' }}</label><input type="password" name="current_password" autocomplete="current-password" required>
+      <label>{{ 'Yangi parol (kamida 8 belgi)' if current_language == 'uz' else 'Новый пароль (минимум 8 символов)' }}</label><input type="password" name="new_password" minlength="8" autocomplete="new-password" required>
+      <label>{{ 'Yangi parolni takrorlang' if current_language == 'uz' else 'Повторите новый пароль' }}</label><input type="password" name="confirm_password" minlength="8" autocomplete="new-password" required>
+      <button type="submit">{{ 'Parolni yangilash' if current_language == 'uz' else 'Изменить пароль' }}</button>
+    </form>
+  </section>
+  <a class="back-link" href="{{ url_for('user_dashboard') }}">← {{ 'Kabinetga qaytish' if current_language == 'uz' else 'Вернуться в кабинет' }}</a>
+</main>{% endblock %}

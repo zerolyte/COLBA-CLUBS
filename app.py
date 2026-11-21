@@ -1,5 +1,5 @@
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -26,6 +26,7 @@ if not secret and os.environ.get("RENDER"):
     raise RuntimeError("Set CLUBPOINT_SECRET in Render environment variables.")
 app.secret_key = secret or "DEV-ONLY-CHANGE-ME"
 app.config.update(
+    MAX_CONTENT_LENGTH=2 * 1024 * 1024,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "1" if os.environ.get("RENDER") else "0") == "1",
@@ -85,6 +86,8 @@ def init_db():
           members INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 0
         )""")
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0")
+        con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA")
+        con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_mime TEXT")
         con.execute("""CREATE TABLE IF NOT EXISTS news (
           id SERIAL PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -143,6 +146,10 @@ def init_db():
         user_columns = [row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()]
         if "points" not in user_columns:
             con.execute("ALTER TABLE users ADD COLUMN points INTEGER NOT NULL DEFAULT 0")
+        if "avatar_data" not in user_columns:
+            con.execute("ALTER TABLE users ADD COLUMN avatar_data BLOB")
+        if "avatar_mime" not in user_columns:
+            con.execute("ALTER TABLE users ADD COLUMN avatar_mime TEXT")
         con.execute("""CREATE TABLE IF NOT EXISTS book_quiz_submissions (
           id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           book_key TEXT NOT NULL, answers TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
@@ -304,6 +311,67 @@ def delete_user(user_id):
     con=db(); con.execute("DELETE FROM users WHERE id=?",(user_id,)); con.commit(); con.close()
     flash(tr("Аккаунт удалён."))
     return redirect(url_for("operator_dashboard"))
+
+@app.route("/user/settings", methods=["GET", "POST"])
+@user_required
+def user_settings():
+    con = db()
+    user = con.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    if not user:
+        con.close()
+        session.pop("user_id", None)
+        return redirect(url_for("user_login"))
+
+    if request.method == "POST":
+        action = request.form.get("action", "password")
+        if action == "photo":
+            photo = request.files.get("photo")
+            if not photo or not photo.filename:
+                flash("Выберите фотографию профиля.")
+            else:
+                data = photo.read(2 * 1024 * 1024 + 1)
+                mime = photo.mimetype
+                valid = ((mime == "image/jpeg" and data.startswith(b"\xff\xd8\xff")) or
+                         (mime == "image/png" and data.startswith(b"\x89PNG\r\n\x1a\n")) or
+                         (mime == "image/webp" and len(data) > 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"))
+                if len(data) > 2 * 1024 * 1024 or not valid:
+                    flash("Используйте JPG, PNG или WEBP размером не более 2 МБ.")
+                else:
+                    con.execute("UPDATE users SET avatar_data=?, avatar_mime=? WHERE id=?",
+                                (data, mime, session["user_id"]))
+                    con.commit()
+                    flash("Фото профиля обновлено.")
+        elif action == "password":
+            current = request.form.get("current_password", "")
+            new = request.form.get("new_password", "")
+            confirm = request.form.get("confirm_password", "")
+            if not check_password_hash(user["password_hash"], current):
+                flash("Текущий пароль указан неверно.")
+            elif len(new) < 8:
+                flash("Новый пароль должен содержать минимум 8 символов.")
+            elif new != confirm:
+                flash("Новые пароли не совпадают.")
+            else:
+                con.execute("UPDATE users SET password_hash=? WHERE id=?",
+                            (generate_password_hash(new), session["user_id"]))
+                con.commit()
+                flash("Пароль успешно изменён.")
+        con.close()
+        return redirect(url_for("user_settings"))
+
+    con.close()
+    return render_template("user_settings.html", user=user)
+
+@app.route("/user/avatar/<int:user_id>")
+@user_required
+def user_avatar(user_id):
+    con = db()
+    row = con.execute("SELECT avatar_data, avatar_mime FROM users WHERE id=?", (user_id,)).fetchone()
+    con.close()
+    if not row or not row["avatar_data"]:
+        return "", 404
+    return Response(bytes(row["avatar_data"]), mimetype=row["avatar_mime"] or "image/jpeg",
+                    headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
 
 @app.route("/user")
 @user_required
