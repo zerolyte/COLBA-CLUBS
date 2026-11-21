@@ -17,3 +17,5 @@ button:hover,.btn:hover{background:var(--gd)}.secondary{background:white;color:v
 .login{max-width:420px;margin:70px auto}.login .panel{padding:25px}.login button{width:100%;margin-top:15px}
 .actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.rank{font-weight:800;color:var(--g)}
 @media(max-width:650px){.grid{grid-template-columns:1fr}.formgrid{grid-template-columns:1fr}header{padding:14px 18px}}
+
+.lang-switch{display:inline-block;padding:6px 10px;border:1px solid #dbe2ea;border-radius:8px;margin-right:8px;font-weight:700}.lang-switch a{color:inherit;text-decoration:none;padding:2px 4px}

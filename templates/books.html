@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="wrap">
+<h1>{{ 'Kitoblar bo‘yicha testlar' if current_language == 'uz' else 'Тесты по книгам' }}</h1>
+<p class="sub">{{ 'Javoblaringiz operatorga yuboriladi. Ballar tekshiruvdan keyin qo‘shiladi.' if current_language == 'uz' else 'Ваши ответы отправляются оператору. Баллы начисляются после проверки.' }}</p>
+{% for key, book in books.items() %}
+<section class="panel"><h2>{{ book.title }}</h2>
+<form method="post" action="{{ url_for('submit_book_quiz', book_key=key) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% for question in book.questions %}
+<div style="margin:16px 0"><label><b>{{ loop.index }}. {{ question }}</b></label>
+<textarea name="answer_{{ loop.index }}" rows="3" required style="width:100%"></textarea></div>
+{% endfor %}
+<button>{{ 'Javoblarni yuborish' if current_language == 'uz' else 'Отправить ответы' }}</button>
+</form></section>
+{% endfor %}
+<section class="panel"><h2>{{ 'Mening yuborgan testlarim' if current_language == 'uz' else 'Мои отправленные тесты' }}</h2>
+{% for s in submissions %}
+<p><b>{{ books[s.book_key].title if s.book_key in books else s.book_key }}</b> —
+{% if s.status == 'pending' %}{{ 'Tekshirilmoqda' if current_language == 'uz' else 'На проверке' }}
+{% else %}{{ 'Tekshirildi: ' if current_language == 'uz' else 'Проверено: ' }}{{ s.awarded_points }} {{ 'ball' if current_language == 'uz' else 'баллов' }}{% endif %}</p>
+{% else %}<p>{{ 'Hozircha yuborilgan testlar yo‘q.' if current_language == 'uz' else 'Вы ещё не отправляли тесты.' }}</p>{% endfor %}
+</section></main>
+{% endblock %}
