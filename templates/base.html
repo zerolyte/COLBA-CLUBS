@@ -1,1 +1,14 @@
-<!doctype html><html lang="{{ 'uz' if current_language == 'uz' else 'ru' }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COLBA CLUBS</title><link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head><body><header><div class="brand"><img src="{{ url_for('static',filename='colba-logo.png') }}" alt="COLBA Maktabi" class="brand-logo"><span class="brand-name">COLBA CLUBS</span></div><nav><span class="lang-switch"><a href="{{ url_for('set_language', lang='ru') }}">RU</a> | <a href="{{ url_for('set_language', lang='uz') }}">UZ</a></span><a href="{{ url_for('news_catalog') }}">{{ _('Новости') }}</a><a href="{{ url_for('tournaments_catalog') }}">{{ _('Турниры') }}</a>{% if session.get('operator_id') %}<a href="{{ url_for('operator_dashboard') }}">{{ _('Панель оператора') }}</a><a href="{{ url_for('operator_logout') }}">{{ _('Выйти из оператора') }}</a>{% endif %}{% if session.get('user_id') %}<a href="{{ url_for('book_quizzes') }}">{{ 'Kitob testlari' if current_language == 'uz' else 'Тесты по книгам' }}</a><a href="{{ url_for('user_dashboard') }}">{{ _('Мой кабинет') }}</a><a href="{{ url_for('user_logout') }}">{{ _('Выйти из ученика') }}</a>{% endif %}</nav></header>{% with messages=get_flashed_messages() %}{% if messages %}<div class="wrap">{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}</div>{% endif %}{% endwith %}{% block body %}{% endblock %}</body></html>
+<!doctype html><html lang="{{ 'uz' if current_language == 'uz' else 'ru' }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COLBA CLUBS</title><link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head><body><header><div class="brand"><img src="{{ url_for('static',filename='colba-logo.png') }}" alt="COLBA Maktabi" class="brand-logo"><span class="brand-name">COLBA CLUBS</span></div><nav class="main-nav">
+<span class="lang-switch"><a href="{{ url_for('set_language', lang='ru') }}">RU</a><span class="lang-divider">/</span><a href="{{ url_for('set_language', lang='uz') }}">UZ</a></span>
+<a class="nav-link" href="{{ url_for('news_catalog') }}">{{ _('Новости') }}</a>
+<a class="nav-link" href="{{ url_for('tournaments_catalog') }}">{{ _('Турниры') }}</a>
+{% if session.get('operator_id') %}
+<a class="nav-link" href="{{ url_for('operator_dashboard') }}">{{ _('Панель оператора') }}</a>
+<a class="nav-link nav-exit" href="{{ url_for('operator_logout') }}">{{ _('Выйти из оператора') }}</a>
+{% endif %}
+{% if session.get('user_id') %}
+<a class="nav-link nav-highlight" href="{{ url_for('book_quizzes') }}">{{ 'Kitob testlari' if current_language == 'uz' else 'Тесты по книгам' }}</a>
+<a class="nav-link" href="{{ url_for('user_dashboard') }}">{{ _('Мой кабинет') }}</a>
+<a class="nav-link nav-exit" href="{{ url_for('user_logout') }}">{{ _('Выйти из ученика') }}</a>
+{% endif %}
+</nav></header>{% with messages=get_flashed_messages() %}{% if messages %}<div class="wrap">{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}</div>{% endif %}{% endwith %}{% block body %}{% endblock %}</body></html>
