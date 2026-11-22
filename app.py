@@ -140,6 +140,14 @@ def init_db():
           body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
         con.execute("CREATE INDEX IF NOT EXISTS idx_club_chat_messages_club_id_id ON club_chat_messages(club_id, id)")
+        con.execute("""CREATE TABLE IF NOT EXISTS club_join_requests (
+          id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          reviewed_at TIMESTAMP, reviewed_by_operator_id INTEGER REFERENCES operators(id) ON DELETE SET NULL,
+          reviewed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )""")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_club_join_requests_status ON club_join_requests(status, club_id)")
     else:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
@@ -221,6 +229,14 @@ def init_db():
           body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
         con.execute("CREATE INDEX IF NOT EXISTS idx_club_chat_messages_club_id_id ON club_chat_messages(club_id, id)")
+        con.execute("""CREATE TABLE IF NOT EXISTS club_join_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          reviewed_at TIMESTAMP, reviewed_by_operator_id INTEGER REFERENCES operators(id) ON DELETE SET NULL,
+          reviewed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )""")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_club_join_requests_status ON club_join_requests(status, club_id)")
     # Backward-compatible migration for existing SQLite databases.
     if not DATABASE_URL:
         operator_columns = [row["name"] for row in con.execute("PRAGMA table_info(operators)").fetchall()]
@@ -668,6 +684,117 @@ def user_settings():
     con.close()
     return render_template("user_settings.html", user=user)
 
+@app.route("/user/club-requests", methods=["GET", "POST"])
+@user_required
+def user_club_requests():
+    con = db()
+    if request.method == "POST":
+        try:
+            club_id = int(request.form.get("club_id", ""))
+        except ValueError:
+            club_id = 0
+        club = con.execute("SELECT id FROM clubs WHERE id=?", (club_id,)).fetchone()
+        current = con.execute("SELECT club_id FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        pending = con.execute("SELECT id FROM club_join_requests WHERE user_id=? AND status='pending'", (session["user_id"],)).fetchone()
+        if not club:
+            flash("Выберите существующий клуб.")
+        elif current and current["club_id"]:
+            flash("Вы уже состоите в клубе. Сначала попросите оператора исключить вас из него.")
+        elif pending:
+            flash("У вас уже есть заявка на рассмотрении.")
+        else:
+            con.execute("INSERT INTO club_join_requests(user_id, club_id) VALUES(?,?)", (session["user_id"], club_id))
+            con.commit()
+            flash("Заявка отправлена. Её может принять президент клуба или оператор.")
+        con.close()
+        return redirect(url_for("user_club_requests"))
+    clubs = con.execute("SELECT id, name FROM clubs ORDER BY name").fetchall()
+    requests = con.execute("SELECT r.*, c.name AS club_name FROM club_join_requests r JOIN clubs c ON c.id=r.club_id WHERE r.user_id=? ORDER BY r.id DESC", (session["user_id"],)).fetchall()
+    con.close()
+    return render_template("club_join_requests.html", clubs=clubs, requests=requests)
+
+@app.route("/club/president/manage", methods=["GET"])
+@user_required
+def president_manage_club():
+    con = db()
+    club = con.execute("SELECT id, name FROM clubs WHERE president_user_id=?", (session["user_id"],)).fetchone()
+    if not club:
+        con.close()
+        flash("У вас нет прав президента клуба.")
+        return redirect(url_for("user_dashboard"))
+    requests = con.execute("""SELECT r.id, r.created_at, u.full_name, u.student_id
+        FROM club_join_requests r JOIN users u ON u.id=r.user_id
+        WHERE r.club_id=? AND r.status='pending' ORDER BY r.id""", (club["id"],)).fetchall()
+    members = con.execute("SELECT id, full_name, student_id FROM users WHERE club_id=? ORDER BY full_name", (club["id"],)).fetchall()
+    con.close()
+    return render_template("president_manage.html", club=club, requests=requests, members=members)
+
+@app.post("/club/president/request/<int:request_id>/<decision>")
+@user_required
+def president_review_request(request_id, decision):
+    if decision not in ("approve", "reject"):
+        return redirect(url_for("president_manage_club"))
+    con = db()
+    club = con.execute("SELECT id FROM clubs WHERE president_user_id=?", (session["user_id"],)).fetchone()
+    if not club:
+        con.close(); flash("Нет прав президента."); return redirect(url_for("user_dashboard"))
+    req = con.execute("SELECT id, user_id, club_id FROM club_join_requests WHERE id=? AND club_id=? AND status='pending'", (request_id, club["id"])).fetchone()
+    if not req:
+        con.close(); flash("Заявка не найдена или уже обработана."); return redirect(url_for("president_manage_club"))
+    if decision == "approve":
+        con.execute("UPDATE users SET club_id=? WHERE id=? AND club_id IS NULL", (club["id"], req["user_id"]))
+        con.execute("UPDATE club_join_requests SET status='approved', reviewed_at=CURRENT_TIMESTAMP, reviewed_by_user_id=? WHERE id=?", (session["user_id"], request_id))
+        flash("Заявка принята.")
+    else:
+        con.execute("UPDATE club_join_requests SET status='rejected', reviewed_at=CURRENT_TIMESTAMP, reviewed_by_user_id=? WHERE id=?", (session["user_id"], request_id))
+        flash("Заявка отклонена.")
+    con.commit(); con.close()
+    return redirect(url_for("president_manage_club"))
+
+@app.post("/club/president/remove/<int:user_id>")
+@user_required
+def president_remove_member(user_id):
+    con = db()
+    club = con.execute("SELECT id FROM clubs WHERE president_user_id=?", (session["user_id"],)).fetchone()
+    if not club:
+        con.close(); flash("Нет прав президента."); return redirect(url_for("user_dashboard"))
+    member = con.execute("SELECT id FROM users WHERE id=? AND club_id=?", (user_id, club["id"])).fetchone()
+    if not member or user_id == session["user_id"]:
+        con.close(); flash("Нельзя исключить этого пользователя."); return redirect(url_for("president_manage_club"))
+    con.execute("UPDATE users SET club_id=NULL WHERE id=?", (user_id,))
+    con.commit(); con.close(); flash("Ученик исключён из клуба.")
+    return redirect(url_for("president_manage_club"))
+
+@app.route("/operator/club-requests")
+@operator_required
+def operator_club_requests():
+    con = db()
+    requests = con.execute("""SELECT r.id, r.created_at, u.full_name, u.student_id, c.name AS club_name
+        FROM club_join_requests r JOIN users u ON u.id=r.user_id JOIN clubs c ON c.id=r.club_id
+        WHERE r.status='pending' ORDER BY r.id""").fetchall()
+    con.close()
+    return render_template("operator_club_requests.html", requests=requests)
+
+@app.post("/operator/club-request/<int:request_id>/<decision>")
+@operator_required
+def operator_review_club_request(request_id, decision):
+    if decision not in ("approve", "reject"):
+        return redirect(url_for("operator_club_requests"))
+    con = db()
+    req = con.execute("SELECT id, user_id, club_id FROM club_join_requests WHERE id=? AND status='pending'", (request_id,)).fetchone()
+    if not req:
+        con.close(); flash("Заявка не найдена или уже обработана."); return redirect(url_for("operator_club_requests"))
+    if decision == "approve":
+        con.execute("UPDATE users SET club_id=? WHERE id=?", (req["club_id"], req["user_id"]))
+        con.execute("UPDATE clubs SET president_user_id=NULL WHERE president_user_id=? AND id<>?", (req["user_id"], req["club_id"]))
+        con.execute("UPDATE club_join_requests SET status='approved', reviewed_at=CURRENT_TIMESTAMP, reviewed_by_operator_id=? WHERE id=?", (session["operator_id"], request_id))
+        flash("Заявка принята, ученик добавлен в клуб.")
+    else:
+        con.execute("UPDATE club_join_requests SET status='rejected', reviewed_at=CURRENT_TIMESTAMP, reviewed_by_operator_id=? WHERE id=?", (session["operator_id"], request_id))
+        flash("Заявка отклонена.")
+    con.commit(); con.close()
+    return redirect(url_for("operator_club_requests"))
+
 @app.route("/user/avatar/<int:user_id>")
 @user_required
 def user_avatar(user_id):
@@ -710,8 +837,9 @@ def user_dashboard():
                         WHERE u.id=?""",(session["user_id"],)).fetchone()
     clubs=con.execute("""SELECT c.*, COALESCE(SUM(u.points),0) AS points FROM clubs c
                         LEFT JOIN users u ON u.club_id=c.id GROUP BY c.id ORDER BY COALESCE(SUM(u.points),0) DESC""").fetchall()
+    president_club = con.execute("SELECT id, name FROM clubs WHERE president_user_id=?", (session["user_id"],)).fetchone()
     con.close()
-    return render_template("user.html", user=user, clubs=clubs)
+    return render_template("user.html", user=user, clubs=clubs, president_club=president_club)
 
 @app.route("/user/messages", methods=["GET", "POST"])
 @user_required

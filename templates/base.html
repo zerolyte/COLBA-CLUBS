@@ -6,6 +6,7 @@
 <div class="nav-dropdown">
 <a class="nav-link" href="{{ url_for('operator_chat') }}">{{ 'Operatorlar chati' if current_language == 'uz' else 'Чат операторов' }}</a>
 <a class="nav-link" href="{{ url_for('operator_dashboard') }}">{{ 'Operator paneli' if current_language == 'uz' else 'Панель оператора' }}</a>
+<a class="nav-link" href="{{ url_for('operator_club_requests') }}">{{ 'Klubga arizalar' if current_language == 'uz' else 'Заявки в клубы' }}</a>
 </div>
 </details>
 <a class="nav-link nav-exit" href="{{ url_for('operator_logout') }}">{{ 'Chiqish' if current_language == 'uz' else 'Выход' }}</a>
@@ -31,6 +32,7 @@
 <a class="nav-link" href="{{ url_for('user_messages') }}">{{ 'Operatorga savollar' if current_language == 'uz' else 'Вопросы оператору' }}</a>
 <a class="nav-link" href="{{ url_for('user_dashboard') }}">{{ 'Shaxsiy kabinet' if current_language == 'uz' else 'Личный кабинет' }}</a>
 <a class="nav-link" href="{{ url_for('user_settings') }}">{{ 'Akkaunt sozlamalari' if current_language == 'uz' else 'Настройки аккаунта' }}</a>
+<a class="nav-link" href="{{ url_for('user_club_requests') }}">{{ 'Klubga kirish arizasi' if current_language == 'uz' else 'Заявки на вступление в клуб' }}</a>
 </div>
 </details>
 <a class="nav-link nav-exit" href="{{ url_for('user_logout') }}">{{ 'Chiqish' if current_language == 'uz' else 'Выход' }}</a>

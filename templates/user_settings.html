@@ -8,6 +8,11 @@
     </div>
   </section>
   <section class="settings-card">
+    <h2>{{ 'Klubga qo‘shilish' if current_language == 'uz' else 'Вступление в клуб' }}</h2>
+    <p class="muted">{{ 'Klubga kirish uchun ariza yuboring va uning holatini kuzating.' if current_language == 'uz' else 'Отправьте заявку на вступление в клуб и следите за её статусом.' }}</p>
+    <a class="btn" href="{{ url_for('user_club_requests') }}">{{ 'Klublarga ariza yuborish' if current_language == 'uz' else 'Отправить заявку в клуб' }}</a>
+  </section>
+  <section class="settings-card">
     <h2>{{ 'Kirish parolini o‘zgartirish' if current_language == 'uz' else 'Изменить пароль входа' }}</h2>
     <p class="muted">{{ 'Xavfsizlik uchun joriy parolni kiriting.' if current_language == 'uz' else 'Для безопасности сначала введите текущий пароль.' }}</p>
     <form method="post" class="settings-form password-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="password">
