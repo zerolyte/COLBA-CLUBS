@@ -535,6 +535,39 @@ def update_user_points(user_id):
         flash(tr("Введите корректное целое число баллов."))
     return redirect(url_for("operator_dashboard"))
 
+@app.post("/operator/user/club/<int:user_id>")
+@operator_required
+def update_user_club(user_id):
+    """Allow an authenticated operator to move a student to another club."""
+    raw_club_id = request.form.get("club_id", "").strip()
+    con = db()
+    user = con.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user:
+        con.close()
+        flash("Ученик не найден." if session.get("language", "ru") == "ru" else "O‘quvchi topilmadi.")
+        return redirect(url_for("operator_dashboard"))
+
+    club_id = None
+    if raw_club_id:
+        try:
+            club_id = int(raw_club_id)
+        except ValueError:
+            con.close()
+            flash("Выберите корректный клуб." if session.get("language", "ru") == "ru" else "To‘g‘ri klubni tanlang.")
+            return redirect(url_for("operator_dashboard"))
+        club = con.execute("SELECT id FROM clubs WHERE id=?", (club_id,)).fetchone()
+        if not club:
+            con.close()
+            flash("Выбранный клуб не найден." if session.get("language", "ru") == "ru" else "Tanlangan klub topilmadi.")
+            return redirect(url_for("operator_dashboard"))
+
+    con.execute("UPDATE users SET club_id=? WHERE id=?", (club_id, user_id))
+    con.commit()
+    con.close()
+    flash("Клуб ученика обновлён." if session.get("language", "ru") == "ru" else "O‘quvchining klubi yangilandi.")
+    return redirect(url_for("operator_dashboard"))
+
+
 @app.post("/operator/user/delete/<int:user_id>")
 @operator_required
 def delete_user(user_id):
