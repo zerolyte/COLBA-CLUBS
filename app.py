@@ -88,6 +88,7 @@ def init_db():
           id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL,
           members INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 0
         )""")
+        con.execute("ALTER TABLE clubs ADD COLUMN IF NOT EXISTS president_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0")
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA")
         con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_mime TEXT")
@@ -98,6 +99,8 @@ def init_db():
         )""")
         con.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS image_data BYTEA")
         con.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS image_mime TEXT")
+        con.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS club_id INTEGER REFERENCES clubs(id) ON DELETE CASCADE")
+        con.execute("ALTER TABLE news ADD COLUMN IF NOT EXISTS author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
         con.execute("""CREATE TABLE IF NOT EXISTS tournaments (
           id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
           event_date TEXT NOT NULL, capacity INTEGER NOT NULL DEFAULT 0,
@@ -171,7 +174,14 @@ def init_db():
           UNIQUE(tournament_id, user_id)
         );
         """)
+        club_columns = [row["name"] for row in con.execute("PRAGMA table_info(clubs)").fetchall()]
+        if "president_user_id" not in club_columns:
+            con.execute("ALTER TABLE clubs ADD COLUMN president_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
         news_columns = [row["name"] for row in con.execute("PRAGMA table_info(news)").fetchall()]
+        if "club_id" not in news_columns:
+            con.execute("ALTER TABLE news ADD COLUMN club_id INTEGER REFERENCES clubs(id) ON DELETE CASCADE")
+        if "author_user_id" not in news_columns:
+            con.execute("ALTER TABLE news ADD COLUMN author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
         if "image_data" not in news_columns:
             con.execute("ALTER TABLE news ADD COLUMN image_data BLOB")
         if "image_mime" not in news_columns:
@@ -561,10 +571,43 @@ def update_user_club(user_id):
             flash("Выбранный клуб не найден." if session.get("language", "ru") == "ru" else "Tanlangan klub topilmadi.")
             return redirect(url_for("operator_dashboard"))
 
+    con.execute("UPDATE clubs SET president_user_id=NULL WHERE president_user_id=? AND id<>COALESCE(?, -1)", (user_id, club_id))
     con.execute("UPDATE users SET club_id=? WHERE id=?", (club_id, user_id))
     con.commit()
     con.close()
     flash("Клуб ученика обновлён." if session.get("language", "ru") == "ru" else "O‘quvchining klubi yangilandi.")
+    return redirect(url_for("operator_dashboard"))
+
+
+@app.post("/operator/club/<int:club_id>/president")
+@operator_required
+def set_club_president(club_id):
+    raw_user_id = request.form.get("user_id", "").strip()
+    con = db()
+    club = con.execute("SELECT id FROM clubs WHERE id=?", (club_id,)).fetchone()
+    if not club:
+        con.close()
+        flash("Клуб не найден.")
+        return redirect(url_for("operator_dashboard"))
+    user_id = None
+    if raw_user_id:
+        try:
+            user_id = int(raw_user_id)
+        except ValueError:
+            con.close()
+            flash("Выберите корректного ученика.")
+            return redirect(url_for("operator_dashboard"))
+        member = con.execute("SELECT id FROM users WHERE id=? AND club_id=?", (user_id, club_id)).fetchone()
+        if not member:
+            con.close()
+            flash("Президентом можно назначить только ученика этого клуба.")
+            return redirect(url_for("operator_dashboard"))
+        # One student may be president of only one club.
+        con.execute("UPDATE clubs SET president_user_id=NULL WHERE president_user_id=?", (user_id,))
+    con.execute("UPDATE clubs SET president_user_id=? WHERE id=?", (user_id, club_id))
+    con.commit()
+    con.close()
+    flash("Президент клуба обновлён.")
     return redirect(url_for("operator_dashboard"))
 
 
@@ -834,9 +877,12 @@ def logout():
 @app.route("/news")
 def news_catalog():
     con=db()
-    news_items=con.execute("SELECT * FROM news ORDER BY created_at DESC, id DESC").fetchall()
+    news_items=con.execute("SELECT n.*, c.name AS club_name FROM news n LEFT JOIN clubs c ON c.id=n.club_id ORDER BY n.created_at DESC, n.id DESC").fetchall()
+    president_club = None
+    if session.get("user_id"):
+        president_club = con.execute("SELECT c.id, c.name FROM clubs c WHERE c.president_user_id=?", (session["user_id"],)).fetchone()
     con.close()
-    return render_template("news.html", news_items=news_items)
+    return render_template("news.html", news_items=news_items, president_club=president_club)
 
 @app.route("/tournaments")
 def tournaments_catalog():
@@ -879,6 +925,41 @@ def register_tournament(tournament_id):
         return redirect(url_for("tournaments_catalog"))
     con.close()
     return redirect(url_for("tournaments_catalog"))
+
+@app.post("/club/president/news")
+@user_required
+def create_club_news():
+    title = request.form.get("title", "").strip()
+    body = request.form.get("body", "").strip()
+    photo = request.files.get("photo")
+    image_data = None
+    image_mime = None
+    if photo and photo.filename:
+        image_data = photo.read(1_500_001)
+        image_mime = photo.mimetype
+        valid = ((image_mime == "image/jpeg" and image_data.startswith(b"\xff\xd8\xff")) or
+                 (image_mime == "image/png" and image_data.startswith(b"\x89PNG\r\n\x1a\n")) or
+                 (image_mime == "image/webp" and len(image_data) > 12 and image_data[:4] == b"RIFF" and image_data[8:12] == b"WEBP"))
+        if len(image_data) > 1_500_000 or not valid:
+            flash("Фото должно быть JPG, PNG или WEBP размером не более 1,5 МБ.")
+            return redirect(url_for("news_catalog"))
+    con = db()
+    club = con.execute("SELECT id FROM clubs WHERE president_user_id=?", (session["user_id"],)).fetchone()
+    if not club:
+        con.close()
+        flash("Публиковать новости клуба может только назначенный президент.")
+        return redirect(url_for("news_catalog"))
+    if not title or not body:
+        con.close()
+        flash("Заполните заголовок и текст новости.")
+        return redirect(url_for("news_catalog"))
+    con.execute("INSERT INTO news(title,body,image_data,image_mime,club_id,author_user_id) VALUES(?,?,?,?,?,?)",
+                (title, body, image_data, image_mime, club["id"], session["user_id"]))
+    con.commit()
+    con.close()
+    flash("Новость клуба опубликована.")
+    return redirect(url_for("news_catalog"))
+
 
 @app.post("/operator/news")
 @operator_required
