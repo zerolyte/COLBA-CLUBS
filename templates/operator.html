@@ -7,6 +7,19 @@
 <section class="panel"><h2>{{ _('Создать турнир') }}</h2><form method="post" action="{{url_for('create_tournament')}}" class="formgrid"><input type="hidden" name="csrf_token" value="{{csrf_token()}}"><div><label>{{ _('Название турнира') }}</label><input name="title" required maxlength="180"></div><div><label>{{ _('Дата проведения') }}</label><input name="event_date" type="date" required></div><div><label>{{ _('Максимум участников (0 — без лимита)') }}</label><input name="capacity" type="number" min="0" value="0"></div><div><label>{{ _('Статус') }}</label><select name="status"><option value="open">{{ _('Регистрация открыта') }}</option><option value="closed">{{ _('Регистрация закрыта') }}</option><option value="finished">{{ _('Завершён') }}</option></select></div><div style="grid-column:1/-1"><label>{{ _('Описание') }}</label><textarea name="description" rows="3" style="width:100%"></textarea></div><div><button>{{ _('Создать турнир') }}</button></div></form><h3>{{ _('Турниры и участники') }}</h3>{% for t in tournaments %}<div class="panel"><b>{{t.title}}</b> — {{t.event_date}}<p class="muted">{{ _('Зарегистрировано:') }} {{t.registered}}{% if t.capacity > 0 %} / {{t.capacity}}{% else %} / без лимита{% endif %}</p><div class="actions"><form method="post" action="{{url_for('update_tournament_status',tournament_id=t.id)}}"><input type="hidden" name="csrf_token" value="{{csrf_token()}}"><select name="status"><option value="open" {% if t.status == 'open' %}selected{% endif %}>{{ _('Открыта') }}</option><option value="closed" {% if t.status == 'closed' %}selected{% endif %}>{{ _('Закрыта') }}</option><option value="finished" {% if t.status == 'finished' %}selected{% endif %}>{{ _('Завершён') }}</option></select><button>{{ _('Изменить статус') }}</button></form><form method="post" action="{{url_for('delete_tournament',tournament_id=t.id)}}" onsubmit="return confirm('Удалить турнир и регистрации?')"><input type="hidden" name="csrf_token" value="{{csrf_token()}}"><button class="danger">{{ _('Удалить') }}</button></form></div></div>{% else %}<p class="muted">{{ _('Турниров пока нет.') }}</p>{% endfor %}</section>
 <section class="panel"><h2>{{ _('Список участников турниров') }}</h2><table><tr><th>{{ _('Турнир') }}</th><th>{{ _('Ученик') }}</th><th>{{ _('ID ученика') }}</th></tr>{% for r in registrations %}<tr><td>{{r.tournament_title}}</td><td>{{r.full_name}}</td><td>{{r.student_id}}</td></tr>{% else %}<tr><td colspan="3">{{ _('Пока нет регистраций.') }}</td></tr>{% endfor %}</table></section>
 <section class="panel">
+<h2>{{ 'Umumiy chat xabarlari' if current_language == 'uz' else 'Общий чат — сообщения учеников' }}</h2>
+<p class="muted">{{ 'Operator barcha yozishmalarni ko‘rishi mumkin.' if current_language == 'uz' else 'Оператор видит сообщения общего чата.' }}</p>
+{% for m in public_chat_messages %}
+  <article class="chat-message">
+    <div class="chat-meta"><b>{{ m.full_name }} ({{ m.student_id }})</b><span>{{ m.club_name or ('Klubsiz' if current_language == 'uz' else 'Без клуба') }}</span><time>{{ m.created_at }}</time></div>
+    <p>{{ m.body }}</p>
+  </article>
+{% else %}
+  <p class="muted">{{ 'Chatda xabarlar yo‘q.' if current_language == 'uz' else 'В общем чате пока нет сообщений.' }}</p>
+{% endfor %}
+<p><a class="btn" href="{{ url_for('public_chat') }}">{{ 'Chatni ochish' if current_language == 'uz' else 'Открыть общий чат' }}</a></p>
+</section>
+<section class="panel">
 <h2>{{ 'O‘quvchilardan kelgan savollar' if current_language == 'uz' else 'Вопросы от учеников' }}</h2>
 {% for m in student_messages %}
   <article class="message-card">
