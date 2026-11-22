@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="wrap">
+  <section class="panel">
+    <h1>{{ 'Klub chati' if current_language == 'uz' else 'Чат клуба' }} — {{ club.club_name }}</h1>
+    <p class="muted">{{ 'Bu chat faqat shu klub a’zolari uchun. Boshqa klublar xabarlarni ko‘ra olmaydi.' if current_language == 'uz' else 'Этот чат доступен только участникам вашего клуба. Участники других клубов не видят эти сообщения.' }}</p>
+    <form method="post" class="formgrid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="grid-column:1/-1"><label>{{ 'Xabar' if current_language == 'uz' else 'Сообщение' }}</label><textarea name="body" rows="3" maxlength="2000" required style="width:100%" placeholder="{{ 'Xabaringizni yozing...' if current_language == 'uz' else 'Напишите сообщение...' }}"></textarea></div>
+      <div><button type="submit">{{ 'Yuborish' if current_language == 'uz' else 'Отправить' }}</button></div>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>{{ 'Chat tarixi' if current_language == 'uz' else 'История чата' }}</h2>
+    {% for m in messages %}
+      <article class="chat-message">
+        <div class="chat-meta"><b>{{ m.full_name }}</b><span>{{ m.student_id }}</span><time>{{ m.created_at }}</time></div>
+        <p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ m.body }}</p>
+      </article>
+    {% else %}
+      <p class="muted">{{ 'Hozircha xabarlar yo‘q. Birinchi bo‘lib yozing!' if current_language == 'uz' else 'Пока сообщений нет. Напишите первым!' }}</p>
+    {% endfor %}
+  </section>
+</main>
+{% endblock %}

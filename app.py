@@ -131,6 +131,12 @@ def init_db():
           id SERIAL PRIMARY KEY, operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
           body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS club_chat_messages (
+          id SERIAL PRIMARY KEY, club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_club_chat_messages_club_id_id ON club_chat_messages(club_id, id)")
     else:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
@@ -199,6 +205,12 @@ def init_db():
           id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
           body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS club_chat_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, club_id INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_club_chat_messages_club_id_id ON club_chat_messages(club_id, id)")
     # Backward-compatible migration for existing SQLite databases.
     if not DATABASE_URL:
         operator_columns = [row["name"] for row in con.execute("PRAGMA table_info(operators)").fetchall()]
@@ -283,6 +295,43 @@ def public_chat():
                              ORDER BY cm.id DESC LIMIT 200""").fetchall()
     con.close()
     return render_template("public_chat.html", messages=list(reversed(messages)))
+
+@app.route("/club-chat", methods=["GET", "POST"])
+@user_required
+def club_chat():
+    """Private chat room for students belonging to the same club."""
+    con = db()
+    member = con.execute("""SELECT u.id, u.full_name, u.club_id, c.name AS club_name
+                            FROM users u LEFT JOIN clubs c ON c.id=u.club_id
+                            WHERE u.id=?""", (session["user_id"],)).fetchone()
+    if not member or not member["club_id"]:
+        con.close()
+        flash("Сначала оператор должен назначить вас в клуб." if session.get("language", "ru") == "ru" else "Avval operator sizni klubga biriktirishi kerak.")
+        return redirect(url_for("user_dashboard"))
+
+    if request.method == "POST":
+        body = request.form.get("body", "").strip()
+        if not body:
+            flash("Введите текст сообщения." if session.get("language", "ru") == "ru" else "Xabar matnini kiriting.")
+        elif len(body) > 2000:
+            flash("Сообщение не должно превышать 2000 символов." if session.get("language", "ru") == "ru" else "Xabar 2000 belgidan oshmasligi kerak.")
+        else:
+            # Club ID is taken from the authenticated user's database record,
+            # never from a client-supplied form value.
+            con.execute("INSERT INTO club_chat_messages(club_id, user_id, body) VALUES(?,?,?)",
+                        (member["club_id"], session["user_id"], body))
+            con.commit()
+        con.close()
+        return redirect(url_for("club_chat"))
+
+    messages = con.execute("""SELECT m.id, m.body, m.created_at, u.full_name, u.student_id
+                              FROM club_chat_messages m
+                              JOIN users u ON u.id=m.user_id
+                              WHERE m.club_id=?
+                              ORDER BY m.id DESC LIMIT 300""", (member["club_id"],)).fetchall()
+    con.close()
+    return render_template("club_chat.html", club=member, messages=list(reversed(messages)))
+
 
 @app.route("/operator/chat", methods=["GET", "POST"])
 @operator_required

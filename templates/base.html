@@ -9,6 +9,7 @@
 {% endif %}
 {% if session.get('user_id') %}
 <a class="nav-link" href="{{ url_for('public_chat') }}">{{ 'Umumiy chat' if current_language == 'uz' else 'Общий чат' }}</a>
+<a class="nav-link" href="{{ url_for('club_chat') }}">{{ 'Klub chati' if current_language == 'uz' else 'Чат клуба' }}</a>
 <a class="nav-link nav-highlight" href="{{ url_for('book_quizzes') }}">{{ 'Kitob testlari' if current_language == 'uz' else 'Тесты по книгам' }}</a>
 <a class="nav-link" href="{{ url_for('user_messages') }}">{{ 'Savollar' if current_language == 'uz' else 'Вопросы оператору' }}</a>
 <a class="nav-link" href="{{ url_for('user_dashboard') }}">{{ _('Мой кабинет') }}</a>
