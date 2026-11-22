@@ -59,6 +59,7 @@ class PostgresConnection:
     def __init__(self, conn): self.conn = conn
     def execute(self, sql, params=()): return self.conn.execute(sql.replace("?", "%s"), params)
     def commit(self): self.conn.commit()
+    def rollback(self): self.conn.rollback()
     def close(self): self.conn.close()
 
 def db():
@@ -74,8 +75,10 @@ def init_db():
     con = db()
     if DATABASE_URL:
         con.execute("""CREATE TABLE IF NOT EXISTS operators (
-          id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL
+          id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'operator'
         )""")
+        con.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'operator'")
         con.execute("""CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY, login TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
           student_id TEXT UNIQUE NOT NULL, full_name TEXT NOT NULL, club_id INTEGER,
@@ -127,7 +130,8 @@ def init_db():
     else:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL
+          id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'operator'
         );
         CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT, login TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
@@ -187,11 +191,21 @@ def init_db():
           id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+    # Backward-compatible migration for existing SQLite databases.
+    if not DATABASE_URL:
+        operator_columns = [row["name"] for row in con.execute("PRAGMA table_info(operators)").fetchall()]
+        if "role" not in operator_columns:
+            con.execute("ALTER TABLE operators ADD COLUMN role TEXT NOT NULL DEFAULT 'operator'")
     if not con.execute("SELECT id FROM operators LIMIT 1").fetchone():
         initial_username = os.environ.get("OPERATOR_USERNAME", "admin").strip()
         initial_password = os.environ.get("OPERATOR_PASSWORD", "ChangeMe2026!")
-        con.execute("INSERT INTO operators(username,password_hash) VALUES(?,?)",
-                    (initial_username, generate_password_hash(initial_password)))
+        con.execute("INSERT INTO operators(username,password_hash,role) VALUES(?,?,?)",
+                    (initial_username, generate_password_hash(initial_password), "superadmin"))
+    # Existing installations: grant the first-created operator the owner role once.
+    if not con.execute("SELECT id FROM operators WHERE role='superadmin' LIMIT 1").fetchone():
+        first_operator = con.execute("SELECT id FROM operators ORDER BY id LIMIT 1").fetchone()
+        if first_operator:
+            con.execute("UPDATE operators SET role='superadmin' WHERE id=?", (first_operator["id"],))
     if not con.execute("SELECT id FROM clubs LIMIT 1").fetchone():
         for name, members, points in [("Клуб науки",18,860),("Клуб творчества",15,740),("Клуб спорта",22,690),("Клуб IT",12,620)]:
             con.execute("INSERT INTO clubs(name,members,points) VALUES(?,?,?)", (name,members,points))
@@ -202,6 +216,22 @@ def operator_required(fn):
     def wrapped(*args, **kwargs):
         if not session.get("operator_id"):
             return redirect(url_for("operator_login"))
+        return fn(*args, **kwargs)
+    return wrapped
+
+def super_operator_required(fn):
+    """Only the main operator (superadmin) can manage operator accounts."""
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        operator_id = session.get("operator_id")
+        if not operator_id:
+            return redirect(url_for("operator_login"))
+        con = db()
+        row = con.execute("SELECT role FROM operators WHERE id=?", (operator_id,)).fetchone()
+        con.close()
+        if not row or row["role"] != "superadmin":
+            flash("Это действие доступно только главному оператору.")
+            return redirect(url_for("operator_dashboard"))
         return fn(*args, **kwargs)
     return wrapped
 
@@ -283,6 +313,9 @@ def user_login():
 @operator_required
 def operator_dashboard():
     con=db()
+    current_operator = con.execute("SELECT role FROM operators WHERE id=?", (session.get("operator_id"),)).fetchone()
+    is_super_operator = bool(current_operator and current_operator["role"] == "superadmin")
+    operator_accounts = con.execute("SELECT id, username, role FROM operators ORDER BY id").fetchall() if is_super_operator else []
     clubs=con.execute("""SELECT c.*, COUNT(u.id) AS real_members,
                          COALESCE(SUM(u.points),0) AS points
                          FROM clubs c LEFT JOIN users u ON u.club_id=c.id
@@ -310,7 +343,48 @@ def operator_dashboard():
     return render_template("operator.html", clubs=clubs, users=users, total_users=totals,
                            total_points=points, news_items=news_items, tournaments=tournaments,
                            registrations=registrations, quiz_submissions=quiz_submissions,
-                           student_messages=student_messages)
+                           student_messages=student_messages, is_super_operator=is_super_operator,
+                           operator_accounts=operator_accounts)
+
+@app.post("/operator/create-operator")
+@super_operator_required
+def create_operator():
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    if not username or len(username) < 3 or len(password) < 8:
+        flash("Укажите логин (не менее 3 символов) и пароль (не менее 8 символов).")
+        return redirect(url_for("operator_dashboard"))
+    con = db()
+    try:
+        con.execute("INSERT INTO operators(username,password_hash,role) VALUES(?,?,?)",
+                    (username, generate_password_hash(password), "operator"))
+        con.commit()
+        flash("Аккаунт оператора создан.")
+    except Exception:
+        con.rollback()
+        flash("Не удалось создать аккаунт: такой логин уже существует.")
+    finally:
+        con.close()
+    return redirect(url_for("operator_dashboard"))
+
+@app.post("/operator/delete-operator/<int:operator_id>")
+@super_operator_required
+def delete_operator(operator_id):
+    if operator_id == session.get("operator_id"):
+        flash("Нельзя удалить собственный аккаунт главного оператора.")
+        return redirect(url_for("operator_dashboard"))
+    con = db()
+    target = con.execute("SELECT role FROM operators WHERE id=?", (operator_id,)).fetchone()
+    if not target:
+        flash("Оператор не найден.")
+    elif target["role"] == "superadmin":
+        flash("Нельзя удалить аккаунт главного оператора.")
+    else:
+        con.execute("DELETE FROM operators WHERE id=?", (operator_id,))
+        con.commit()
+        flash("Аккаунт оператора удалён.")
+    con.close()
+    return redirect(url_for("operator_dashboard"))
 
 @app.post("/operator/club")
 @operator_required
