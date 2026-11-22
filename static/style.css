@@ -84,3 +84,31 @@ header{flex-wrap:wrap;align-items:center}
 .chat-compose{display:grid;grid-template-columns:1fr auto;gap:10px;border-top:1px solid #e5e7eb;padding-top:14px}
 .chat-compose textarea{width:100%;min-width:0}
 @media(max-width:600px){.chat-compose{grid-template-columns:1fr}.chat-meta time{margin-left:0}}
+
+
+/* Compact header/navigation: reduce the tall two-row menu */
+header{padding:8px clamp(12px,2vw,24px);gap:8px;align-items:center}
+.brand{gap:7px;font-size:17px}
+.brand-logo{width:34px;height:34px}
+.main-nav{gap:3px;align-items:center}
+.main-nav .nav-link{min-height:30px;padding:5px 7px;font-size:12px;border-radius:7px}
+.lang-switch{padding:5px 7px;font-size:12px}
+.lang-switch a{font-size:12px}
+@media(max-width:850px){header{padding:8px 12px;gap:6px}.main-nav{gap:4px}}
+@media(max-width:520px){header{padding:7px 10px}.main-nav .nav-link{min-height:30px;padding:5px 7px;font-size:12px}.lang-switch{min-height:30px;padding:5px 7px}}
+
+/* Group navigation links into compact dropdown menus */
+.main-nav{gap:10px;overflow:visible}
+.nav-menu{position:relative;display:inline-block;z-index:30}
+.nav-menu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;min-height:38px;padding:7px 13px;border-radius:9px;color:#e5e7eb;font-size:14px;font-weight:700;white-space:nowrap}
+.nav-menu summary::-webkit-details-marker{display:none}
+.nav-menu summary::after{content:'⌄';font-size:14px;color:#9ca3af;transition:transform .15s ease}
+.nav-menu[open] summary::after{transform:rotate(180deg)}
+.nav-menu summary:hover,.nav-menu[open] summary{background:#263449;color:#fff}
+.nav-dropdown{position:absolute;top:calc(100% + 8px);left:0;min-width:225px;max-width:min(320px,calc(100vw - 28px));padding:10px;background:#242424;border:1px solid #3a3a3a;border-radius:16px;box-shadow:0 14px 34px #0005;display:flex;flex-direction:column;gap:3px;z-index:50}
+.nav-dropdown .nav-link{display:flex;justify-content:flex-start;white-space:normal;min-height:38px;padding:9px 12px;font-size:14px;border-radius:8px;color:#e5e7eb}
+.nav-dropdown .nav-link:hover{background:#363636;border-color:transparent}
+.nav-dropdown .nav-highlight{background:#14532d;color:#dcfce7}
+.nav-dropdown .nav-exit{color:#fecaca}
+@media(max-width:850px){.main-nav{width:100%;justify-content:flex-start}.nav-dropdown{left:0}}
+@media(max-width:520px){.nav-menu summary{min-height:36px;padding:6px 10px;font-size:13px}.nav-dropdown{min-width:205px}.nav-dropdown .nav-link{font-size:13px}}
