@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="wrap">
+  <h1>{{ 'Operatorlar chati' if current_language == 'uz' else 'Чат операторов' }}</h1>
+  <p class="sub">{{ 'Bu yopiq chat. Xabarlarni faqat operator akkauntlari ko‘ra oladi.' if current_language == 'uz' else 'Закрытый чат: сообщения доступны только аккаунтам операторов.' }}</p>
+  <section class="panel chat-panel">
+    <div class="chat-messages">
+      {% for m in messages %}
+        <article class="chat-message">
+          <div class="chat-meta"><b>{{ m.username }}</b><span>{{ 'Operator' if current_language == 'uz' else 'Оператор' }}</span><time>{{ m.created_at }}</time></div>
+          <p>{{ m.body }}</p>
+        </article>
+      {% else %}
+        <p class="muted">{{ 'Hozircha xabarlar yo‘q. Birinchi bo‘lib yozing!' if current_language == 'uz' else 'Пока сообщений нет. Напишите первым!' }}</p>
+      {% endfor %}
+    </div>
+    <form method="post" class="chat-compose">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="body" rows="3" maxlength="2000" placeholder="{{ 'Xabaringizni yozing...' if current_language == 'uz' else 'Напишите сообщение...' }}" required></textarea>
+      <button type="submit">{{ 'Yuborish' if current_language == 'uz' else 'Отправить' }}</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

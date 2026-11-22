@@ -127,6 +127,10 @@ def init_db():
           id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS operator_chat_messages (
+          id SERIAL PRIMARY KEY, operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+          body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
     else:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
@@ -189,6 +193,10 @@ def init_db():
         )""")
         con.execute("""CREATE TABLE IF NOT EXISTS chat_messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS operator_chat_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, operator_id INTEGER NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
           body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
     # Backward-compatible migration for existing SQLite databases.
@@ -275,6 +283,32 @@ def public_chat():
                              ORDER BY cm.id DESC LIMIT 200""").fetchall()
     con.close()
     return render_template("public_chat.html", messages=list(reversed(messages)))
+
+@app.route("/operator/chat", methods=["GET", "POST"])
+@operator_required
+def operator_chat():
+    """Private room shared only by authenticated operator accounts."""
+    if request.method == "POST":
+        body = request.form.get("body", "").strip()
+        if not body:
+            flash("Введите текст сообщения.")
+        elif len(body) > 2000:
+            flash("Сообщение не должно превышать 2000 символов.")
+        else:
+            con = db()
+            con.execute("INSERT INTO operator_chat_messages(operator_id, body) VALUES(?, ?)",
+                        (session["operator_id"], body))
+            con.commit()
+            con.close()
+        return redirect(url_for("operator_chat"))
+
+    con = db()
+    messages = con.execute("""SELECT m.id, m.body, m.created_at, o.username
+                              FROM operator_chat_messages m
+                              JOIN operators o ON o.id = m.operator_id
+                              ORDER BY m.id DESC LIMIT 300""").fetchall()
+    con.close()
+    return render_template("operator_chat.html", messages=list(reversed(messages)))
 
 @app.route("/")
 def home():
