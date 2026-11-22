@@ -8,6 +8,7 @@
 {% endif %}
 {% if session.get('user_id') %}
 <a class="nav-link nav-highlight" href="{{ url_for('book_quizzes') }}">{{ 'Kitob testlari' if current_language == 'uz' else 'Тесты по книгам' }}</a>
+<a class="nav-link" href="{{ url_for('user_messages') }}">{{ 'Savollar' if current_language == 'uz' else 'Вопросы оператору' }}</a>
 <a class="nav-link" href="{{ url_for('user_dashboard') }}">{{ _('Мой кабинет') }}</a>
 <a class="nav-link" href="{{ url_for('user_settings') }}">{{ 'Sozlamalar' if current_language == 'uz' else 'Настройки' }}</a>
 <a class="nav-link nav-exit" href="{{ url_for('user_logout') }}">{{ _('Выйти из ученика') }}</a>

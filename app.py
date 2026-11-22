@@ -113,6 +113,13 @@ def init_db():
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           reviewed_at TIMESTAMP
         )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS student_messages (
+          id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          subject TEXT NOT NULL, body TEXT NOT NULL, reply TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'new',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          replied_at TIMESTAMP
+        )""")
     else:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
@@ -164,6 +171,13 @@ def init_db():
           awarded_points INTEGER, operator_note TEXT NOT NULL DEFAULT '',
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           reviewed_at TIMESTAMP
+        )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS student_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          subject TEXT NOT NULL, body TEXT NOT NULL, reply TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'new',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          replied_at TIMESTAMP
         )""")
     if not con.execute("SELECT id FROM operators LIMIT 1").fetchone():
         initial_username = os.environ.get("OPERATOR_USERNAME", "admin").strip()
@@ -247,10 +261,15 @@ def operator_dashboard():
         FROM book_quiz_submissions q JOIN users u ON u.id=q.user_id
         LEFT JOIN clubs c ON c.id=u.club_id ORDER BY CASE WHEN q.status='pending' THEN 0 ELSE 1 END, q.id DESC""").fetchall()
     quiz_submissions = [dict(q, answers_data=json.loads(q["answers"])) for q in quiz_submissions]
+    student_messages=con.execute("""SELECT m.*, u.full_name, u.student_id, c.name AS club_name
+        FROM student_messages m JOIN users u ON u.id=m.user_id
+        LEFT JOIN clubs c ON c.id=u.club_id
+        ORDER BY CASE WHEN m.status='new' THEN 0 ELSE 1 END, m.id DESC""").fetchall()
     con.close()
     return render_template("operator.html", clubs=clubs, users=users, total_users=totals,
                            total_points=points, news_items=news_items, tournaments=tournaments,
-                           registrations=registrations, quiz_submissions=quiz_submissions)
+                           registrations=registrations, quiz_submissions=quiz_submissions,
+                           student_messages=student_messages)
 
 @app.post("/operator/club")
 @operator_required
@@ -419,6 +438,57 @@ def user_dashboard():
                         LEFT JOIN users u ON u.club_id=c.id GROUP BY c.id ORDER BY COALESCE(SUM(u.points),0) DESC""").fetchall()
     con.close()
     return render_template("user.html", user=user, clubs=clubs)
+
+@app.route("/user/messages", methods=["GET", "POST"])
+@user_required
+def user_messages():
+    if request.method == "POST":
+        subject = request.form.get("subject", "").strip()
+        body = request.form.get("body", "").strip()
+        if not subject or not body:
+            flash("Введите тему и текст сообщения.")
+        elif len(subject) > 160 or len(body) > 5000:
+            flash("Тема — до 160 символов, сообщение — до 5000 символов.")
+        else:
+            con = db()
+            con.execute("INSERT INTO student_messages(user_id, subject, body) VALUES(?,?,?)",
+                        (session["user_id"], subject, body))
+            con.commit()
+            con.close()
+            flash("Ваш вопрос отправлен оператору.")
+        return redirect(url_for("user_messages"))
+
+    con = db()
+    messages = con.execute(
+        "SELECT * FROM student_messages WHERE user_id=? ORDER BY id DESC",
+        (session["user_id"],)
+    ).fetchall()
+    con.close()
+    return render_template("user_messages.html", messages=messages)
+
+
+@app.post("/operator/message/reply/<int:message_id>")
+@operator_required
+def reply_student_message(message_id):
+    reply = request.form.get("reply", "").strip()
+    if not reply:
+        flash("Введите ответ ученику.")
+    elif len(reply) > 5000:
+        flash("Ответ не должен превышать 5000 символов.")
+    else:
+        con = db()
+        row = con.execute("SELECT id FROM student_messages WHERE id=?", (message_id,)).fetchone()
+        if row:
+            con.execute("""UPDATE student_messages
+                           SET reply=?, status='replied', replied_at=CURRENT_TIMESTAMP
+                           WHERE id=?""", (reply, message_id))
+            con.commit()
+            flash("Ответ отправлен ученику.")
+        else:
+            flash("Сообщение не найдено.")
+        con.close()
+    return redirect(url_for("operator_dashboard"))
+
 
 BOOKS = {
     "men": {"title": "Мен — Фотих Думан", "questions": [

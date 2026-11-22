@@ -67,3 +67,8 @@ header{flex-wrap:wrap;align-items:center}
 .operator-entry a{color:#6b7280;text-decoration:underline}
 .operator-entry a:hover{color:#15803d}
 .login{max-width:420px;margin:70px auto}
+
+.message-card{border:1px solid #e1e7ef;border-radius:14px;padding:16px;margin:14px 0;background:#fbfcfe}
+.message-reply{border-left:3px solid #16a34a;background:#f0fdf4;padding:12px 14px;margin:12px 0;border-radius:8px}
+.message-card h3{margin:10px 0 6px}
+.message-card p{line-height:1.55}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="wrap">
+  <h1>{{ 'Operatorga savol yuborish' if current_language == 'uz' else 'Вопрос оператору' }}</h1>
+  <section class="panel">
+    <h2>{{ 'Yangi xabar' if current_language == 'uz' else 'Новое сообщение' }}</h2>
+    <form method="post" class="formgrid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="grid-column:1/-1">
+        <label>{{ 'Mavzu' if current_language == 'uz' else 'Тема' }}</label>
+        <input name="subject" maxlength="160" required>
+      </div>
+      <div style="grid-column:1/-1">
+        <label>{{ 'Savolingiz' if current_language == 'uz' else 'Ваш вопрос' }}</label>
+        <textarea name="body" rows="5" maxlength="5000" required style="width:100%"></textarea>
+      </div>
+      <div><button type="submit">{{ 'Yuborish' if current_language == 'uz' else 'Отправить' }}</button></div>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>{{ 'Yuborilgan xabarlar' if current_language == 'uz' else 'Ваши сообщения' }}</h2>
+    {% for m in messages %}
+      <article class="message-card">
+        <div class="actions"><b>{{ m.subject }}</b><small class="muted">{{ m.created_at }}</small></div>
+        <p style="white-space:pre-wrap">{{ m.body }}</p>
+        {% if m.reply %}
+          <div class="message-reply">
+            <b>{{ 'Operator javobi' if current_language == 'uz' else 'Ответ оператора' }}</b>
+            <p style="white-space:pre-wrap">{{ m.reply }}</p>
+            <small class="muted">{{ m.replied_at }}</small>
+          </div>
+        {% else %}
+          <p class="muted">{{ 'Javob kutilmoqda' if current_language == 'uz' else 'Ожидает ответа оператора' }}</p>
+        {% endif %}
+      </article>
+    {% else %}
+      <p class="muted">{{ 'Hozircha xabarlar yo‘q.' if current_language == 'uz' else 'Вы ещё не отправляли сообщений.' }}</p>
+    {% endfor %}
+  </section>
+</main>
+{% endblock %}
