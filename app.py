@@ -120,6 +120,10 @@ def init_db():
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           replied_at TIMESTAMP
         )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS chat_messages (
+          id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
     else:
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
@@ -179,6 +183,10 @@ def init_db():
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           replied_at TIMESTAMP
         )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS chat_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          body TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
     if not con.execute("SELECT id FROM operators LIMIT 1").fetchone():
         initial_username = os.environ.get("OPERATOR_USERNAME", "admin").strip()
         initial_password = os.environ.get("OPERATOR_PASSWORD", "ChangeMe2026!")
@@ -204,6 +212,39 @@ def user_required(fn):
             return redirect(url_for("user_login"))
         return fn(*args, **kwargs)
     return wrapped
+
+@app.route("/public-chat", methods=["GET", "POST"])
+def public_chat():
+    # The chat is available to authenticated students and operators only.
+    if not session.get("user_id") and not session.get("operator_id"):
+        return redirect(url_for("user_login"))
+
+    if request.method == "POST":
+        if not session.get("user_id"):
+            flash("Только ученики могут отправлять сообщения в общий чат.")
+        else:
+            body = request.form.get("body", "").strip()
+            if not body:
+                flash("Введите текст сообщения.")
+            elif len(body) > 2000:
+                flash("Сообщение не должно превышать 2000 символов.")
+            else:
+                con = db()
+                con.execute("INSERT INTO chat_messages(user_id, body) VALUES(?, ?)",
+                            (session["user_id"], body))
+                con.commit()
+                con.close()
+        return redirect(url_for("public_chat"))
+
+    con = db()
+    messages = con.execute("""SELECT cm.id, cm.body, cm.created_at,
+                                    u.full_name, c.name AS club_name
+                             FROM chat_messages cm
+                             JOIN users u ON u.id = cm.user_id
+                             LEFT JOIN clubs c ON c.id = u.club_id
+                             ORDER BY cm.id DESC LIMIT 200""").fetchall()
+    con.close()
+    return render_template("public_chat.html", messages=list(reversed(messages)))
 
 @app.route("/")
 def home():
