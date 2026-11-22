@@ -193,7 +193,12 @@ def user_required(fn):
 
 @app.route("/")
 def home():
-    return render_template("home.html")
+    return render_template(
+        "login.html",
+        title=tr("Вход пользователя"),
+        action=url_for("user_login"),
+        show_operator_link=True
+    )
 
 @app.route("/operator/login", methods=["GET","POST"])
 def operator_login():
@@ -217,7 +222,7 @@ def user_login():
             session.permanent=True; session["user_id"]=row["id"]
             return redirect(url_for("user_dashboard"))
         flash(tr("Неверный логин или пароль."))
-    return render_template("login.html", title=tr("Вход пользователя"), action=url_for("user_login"))
+    return render_template("login.html", title=tr("Вход пользователя"), action=url_for("user_login"), show_operator_link=True)
 
 @app.route("/operator")
 @operator_required

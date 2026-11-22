@@ -61,3 +61,9 @@ header{flex-wrap:wrap;align-items:center}
 .hint{font-size:12px;color:#6b7280;margin:6px 0}.password-form{max-width:560px}
 .back-link{display:inline-block;margin:8px 0 24px;color:#15803d;text-decoration:none;font-weight:700}
 @media(max-width:600px){.settings-card{padding:18px}.avatar-editor{gap:16px}.profile-avatar{width:88px;height:88px}.profile-heading{align-items:flex-start}}
+
+/* Compact operator entry below the student login form */
+.operator-entry{margin:12px 0 0;text-align:center;font-size:12px}
+.operator-entry a{color:#6b7280;text-decoration:underline}
+.operator-entry a:hover{color:#15803d}
+.login{max-width:420px;margin:70px auto}
