@@ -30,6 +30,7 @@
 <div class="nav-dropdown">
 <a class="nav-link" href="{{ url_for('user_messages') }}">{{ 'Operatorga savollar' if current_language == 'uz' else 'Вопросы оператору' }}</a>
 <a class="nav-link" href="{{ url_for('user_dashboard') }}">{{ 'Shaxsiy kabinet' if current_language == 'uz' else 'Личный кабинет' }}</a>
+<a class="nav-link" href="{{ url_for('user_settings') }}">{{ 'Akkaunt sozlamalari' if current_language == 'uz' else 'Настройки аккаунта' }}</a>
 </div>
 </details>
 <a class="nav-link nav-exit" href="{{ url_for('user_logout') }}">{{ 'Chiqish' if current_language == 'uz' else 'Выход' }}</a>
