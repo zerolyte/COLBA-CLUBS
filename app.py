@@ -76,9 +76,11 @@ def init_db():
     if DATABASE_URL:
         con.execute("""CREATE TABLE IF NOT EXISTS operators (
           id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'operator'
+          role TEXT NOT NULL DEFAULT 'operator', avatar_data BYTEA, avatar_mime TEXT
         )""")
         con.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'operator'")
+        con.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS avatar_data BYTEA")
+        con.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS avatar_mime TEXT")
         con.execute("""CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY, login TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
           student_id TEXT UNIQUE NOT NULL, full_name TEXT NOT NULL, club_id INTEGER,
@@ -152,7 +154,7 @@ def init_db():
         con.executescript("""
         CREATE TABLE IF NOT EXISTS operators (
           id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'operator'
+          role TEXT NOT NULL DEFAULT 'operator', avatar_data BLOB, avatar_mime TEXT
         );
         CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT, login TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
@@ -182,6 +184,11 @@ def init_db():
           UNIQUE(tournament_id, user_id)
         );
         """)
+        operator_columns = [row["name"] for row in con.execute("PRAGMA table_info(operators)").fetchall()]
+        if "avatar_data" not in operator_columns:
+            con.execute("ALTER TABLE operators ADD COLUMN avatar_data BLOB")
+        if "avatar_mime" not in operator_columns:
+            con.execute("ALTER TABLE operators ADD COLUMN avatar_mime TEXT")
         club_columns = [row["name"] for row in con.execute("PRAGMA table_info(clubs)").fetchall()]
         if "president_user_id" not in club_columns:
             con.execute("ALTER TABLE clubs ADD COLUMN president_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL")
@@ -985,6 +992,66 @@ def review_book_quiz(submission_id):
     con.commit(); con.close()
     flash("Natija tasdiqlandi. Ballar o‘quvchi va uning klubiga qo‘shildi.")
     return redirect(url_for("operator_dashboard"))
+
+@app.route("/operator/settings", methods=["GET", "POST"])
+@operator_required
+def operator_settings():
+    operator_id = session.get("operator_id")
+    con = db()
+    operator = con.execute("SELECT * FROM operators WHERE id=?", (operator_id,)).fetchone()
+    if not operator:
+        con.close()
+        session.pop("operator_id", None)
+        return redirect(url_for("operator_login"))
+
+    if request.method == "POST":
+        action = request.form.get("action", "password")
+        if action == "photo":
+            photo = request.files.get("photo")
+            if not photo or not photo.filename:
+                flash("Выберите фотографию профиля.")
+            else:
+                data = photo.read(2 * 1024 * 1024 + 1)
+                mime = photo.mimetype
+                valid = ((mime == "image/jpeg" and data.startswith(b"\xff\xd8\xff")) or
+                         (mime == "image/png" and data.startswith(b"\x89PNG\r\n\x1a\n")) or
+                         (mime == "image/webp" and len(data) > 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"))
+                if len(data) > 2 * 1024 * 1024 or not valid:
+                    flash("Используйте JPG, PNG или WEBP размером не более 2 МБ.")
+                else:
+                    con.execute("UPDATE operators SET avatar_data=?, avatar_mime=? WHERE id=?", (data, mime, operator_id))
+                    con.commit()
+                    flash("Фото профиля оператора обновлено.")
+        elif action == "password":
+            current = request.form.get("current_password", "")
+            new = request.form.get("new_password", "")
+            confirm = request.form.get("confirm_password", "")
+            if not check_password_hash(operator["password_hash"], current):
+                flash("Текущий пароль указан неверно.")
+            elif len(new) < 8:
+                flash("Новый пароль должен содержать минимум 8 символов.")
+            elif new != confirm:
+                flash("Новые пароли не совпадают.")
+            else:
+                con.execute("UPDATE operators SET password_hash=? WHERE id=?", (generate_password_hash(new), operator_id))
+                con.commit()
+                flash("Код входа оператора успешно изменён.")
+        con.close()
+        return redirect(url_for("operator_settings"))
+
+    con.close()
+    return render_template("operator_settings.html", operator=operator)
+
+@app.route("/operator/avatar")
+@operator_required
+def operator_avatar():
+    con = db()
+    row = con.execute("SELECT avatar_data, avatar_mime FROM operators WHERE id=?", (session.get("operator_id"),)).fetchone()
+    con.close()
+    if not row or not row["avatar_data"]:
+        return "", 404
+    return Response(bytes(row["avatar_data"]), mimetype=row["avatar_mime"] or "image/jpeg",
+                    headers={"Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff"})
 
 @app.route("/operator/logout")
 def operator_logout():

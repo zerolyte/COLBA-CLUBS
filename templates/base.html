@@ -6,6 +6,7 @@
 <div class="nav-dropdown">
 <a class="nav-link" href="{{ url_for('operator_chat') }}">{{ 'Operatorlar chati' if current_language == 'uz' else 'Чат операторов' }}</a>
 <a class="nav-link" href="{{ url_for('operator_dashboard') }}">{{ 'Operator paneli' if current_language == 'uz' else 'Панель оператора' }}</a>
+<a class="nav-link" href="{{ url_for('operator_settings') }}">{{ 'Akkaunt sozlamalari' if current_language == 'uz' else 'Настройки аккаунта' }}</a>
 <a class="nav-link" href="{{ url_for('operator_club_requests') }}">{{ 'Klubga arizalar' if current_language == 'uz' else 'Заявки в клубы' }}</a>
 </div>
 </details>
