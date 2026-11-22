@@ -320,7 +320,7 @@ def public_chat():
         return redirect(url_for("public_chat"))
 
     con = db()
-    messages = con.execute("""SELECT cm.id, cm.body, cm.created_at,
+    messages = con.execute("""SELECT cm.id, cm.body, cm.created_at, u.id AS user_id,
                                     u.full_name, c.name AS club_name
                              FROM chat_messages cm
                              JOIN users u ON u.id = cm.user_id
@@ -357,7 +357,8 @@ def club_chat():
         con.close()
         return redirect(url_for("club_chat"))
 
-    messages = con.execute("""SELECT m.id, m.body, m.created_at, u.full_name, u.student_id
+    messages = con.execute("""SELECT m.id, m.body, m.created_at, u.id AS user_id,
+                                     u.full_name, u.student_id
                               FROM club_chat_messages m
                               JOIN users u ON u.id=m.user_id
                               WHERE m.club_id=?
@@ -803,8 +804,10 @@ def operator_review_club_request(request_id, decision):
     return redirect(url_for("operator_club_requests"))
 
 @app.route("/user/avatar/<int:user_id>")
-@user_required
 def user_avatar(user_id):
+    # Student avatars are visible to authenticated students and operators in chats.
+    if not session.get("user_id") and not session.get("operator_id"):
+        return redirect(url_for("user_login"))
     con = db()
     row = con.execute("SELECT avatar_data, avatar_mime FROM users WHERE id=?", (user_id,)).fetchone()
     con.close()

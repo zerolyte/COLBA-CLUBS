@@ -14,7 +14,10 @@
     <h2>{{ 'Chat tarixi' if current_language == 'uz' else 'История чата' }}</h2>
     {% for m in messages %}
       <article class="chat-message">
-        <div class="chat-meta"><b>{{ m.full_name }}</b><span>{{ m.student_id }}</span><time>{{ m.created_at }}</time></div>
+        <div class="chat-meta">
+          <img class="chat-avatar" src="{{ url_for('user_avatar', user_id=m.user_id) }}" alt="" onerror="this.style.display='none'">
+          <b>{{ m.full_name }}</b><span>{{ m.student_id }}</span><time>{{ m.created_at }}</time>
+        </div>
         <p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ m.body }}</p>
       </article>
     {% else %}

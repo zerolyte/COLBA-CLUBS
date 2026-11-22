@@ -7,7 +7,10 @@
     <div class="chat-messages">
       {% for m in messages %}
         <article class="chat-message">
-          <div class="chat-meta"><b>{{ m.full_name }}</b><span>{{ m.club_name or ('Klubsiz' if current_language == 'uz' else 'Без клуба') }}</span><time>{{ m.created_at }}</time></div>
+          <div class="chat-meta">
+            <img class="chat-avatar" src="{{ url_for('user_avatar', user_id=m.user_id) }}" alt="" onerror="this.style.display='none'">
+            <b>{{ m.full_name }}</b><span>{{ m.club_name or ('Klubsiz' if current_language == 'uz' else 'Без клуба') }}</span><time>{{ m.created_at }}</time>
+          </div>
           <p>{{ m.body }}</p>
         </article>
       {% else %}
